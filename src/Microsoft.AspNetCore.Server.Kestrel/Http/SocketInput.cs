@@ -180,25 +180,29 @@ namespace Microsoft.AspNetCore.Server.Kestrel.Http
 
             lock (_sync)
             {
-                if (!consumed.IsDefault)
+                // Check if object was disposed
+                if (_head != null)
                 {
-                    returnStart = _head;
-                    returnEnd = consumed.Block;
-                    _head = consumed.Block;
-                    _head.Start = consumed.Index;
-                }
+                    if (!consumed.IsDefault)
+                    {
+                        returnStart = _head;
+                        returnEnd = consumed.Block;
+                        _head = consumed.Block;
+                        _head.Start = consumed.Index;
+                    }
 
-                if (!examined.IsDefault &&
-                    examined.IsEnd &&
-                    RemoteIntakeFin == false &&
-                    _awaitableError == null)
-                {
-                    _manualResetEvent.Reset();
+                    if (!examined.IsDefault &&
+                        examined.IsEnd &&
+                        RemoteIntakeFin == false &&
+                        _awaitableError == null)
+                    {
+                        _manualResetEvent.Reset();
 
-                    Interlocked.CompareExchange(
-                        ref _awaitableState,
-                        _awaitableIsNotCompleted,
-                        _awaitableIsCompleted);
+                        Interlocked.CompareExchange(
+                            ref _awaitableState,
+                            _awaitableIsNotCompleted,
+                            _awaitableIsCompleted);
+                    }
                 }
             }
 
@@ -286,20 +290,23 @@ namespace Microsoft.AspNetCore.Server.Kestrel.Http
 
         public void Dispose()
         {
-            AbortAwaiting();
-
-            // Return all blocks
-            var block = _head;
-            while (block != null)
+            lock (_sync)
             {
-                var returnBlock = block;
-                block = block.Next;
+                AbortAwaiting();
 
-                returnBlock.Pool.Return(returnBlock);
+                // Return all blocks
+                var block = _head;
+                while (block != null)
+                {
+                    var returnBlock = block;
+                    block = block.Next;
+
+                    returnBlock.Pool.Return(returnBlock);
+                }
+
+                _head = null;
+                _tail = null;
             }
-
-            _head = null;
-            _tail = null;
         }
     }
 }
